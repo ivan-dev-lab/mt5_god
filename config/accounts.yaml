@@ -1,0 +1,16 @@
+accounts:
+  # - account_alias: demo_1
+  #   account_login: "5048198927"
+  #   enabled: true
+  - account_alias: main_2
+    account_login: "11142094"
+    enabled: true
+    password: "dT@!HFG7)"
+  - account_alias: main_3
+    account_login: "11330693"
+    enabled: true
+    password: "EpGwRU]1%"
+
+
+
+

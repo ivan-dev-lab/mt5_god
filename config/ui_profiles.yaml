@@ -1,0 +1,50 @@
+ui_profiles:
+  default_mt5:
+    language: en
+    templates_dir: assets/templates/mt5
+    confidence_threshold: 0.88
+    symbol_search_mode: template_only
+    symbol_search_anchor: symbols_panel
+    ocr_language: eng
+    ocr_config: --psm 6
+    top_menu_region: [0, 0, 240, 42]
+    top_menu_ocr_languages: [eng, rus+eng, rus]
+    top_menu_labels: [File]
+    connect_account_menu_labels: [Login to Trade Account]
+    connect_account_menu_ocr_languages: [eng, rus+eng, rus]
+    account_login_field_ratio: [0.36, 0.31, 0.34, 0.11]
+    account_dropdown_region_ratio: [0.36, 0.31, 0.36, 0.56]
+    account_dropdown_region_from_login: [0, 18, 260, 180]
+    anchors:
+      symbols_panel:
+        fallback_region: [0, 55, 210, 430]
+      main_window:
+        template: main_window.png
+      file_menu:
+        template: file_menu.png
+        fallback_region: [12, 8, 68, 28]
+      file_menu_opened:
+        template: file_menu_2.png
+      file_menu_connect_account:
+        template: file_menu_3.png
+        fallback_region: [12, 282, 390, 46]
+      connect_login:
+        template: connect_login.png
+      connect_password:
+        template: login_password.png
+      connect_ok:
+        template: connect_ok.png
+      order_window:
+        template: order_window.png
+      order_ok:
+        template: order_ok.png
+      volume_field:
+        template: volume_field.png
+      stop_loss_field:
+        template: stop_loss_field.png
+      take_profit_field:
+        template: take_profit_field.png
+      buy_button:
+        template: buy_button.png
+      sell_button:
+        template: sell_button.png

@@ -1,0 +1,43 @@
+mode: dry_run
+default_analysis_profile: calculator_a
+default_ui_profile: default_mt5
+
+paths:
+  data_dir: data
+  inbox_dir: data/inbox
+  processed_dir: data/processed
+  failed_dir: data/failed
+  screenshots_dir: data/screenshots
+  analysis_dir: data/analysis
+  execution_dir: data/execution
+  logs_dir: logs
+  database_path: data/mt5_god.sqlite3
+
+retry_policy:
+  telegram_download: 2
+  ocr: 2
+  ui_lookup: 2
+  execution_per_account: 2
+
+telegram:
+  enabled: true
+  allowed_chat_id: 2944501825
+  allowed_thread_id: 548
+  download_dir: data/inbox
+  allowed_mime_types:
+    - image/jpeg
+    - image/png
+    - image/webp
+  send_status_updates: false
+  allow_duplicate_images: true
+  connect_timeout: 20
+  read_timeout: 60
+  write_timeout: 60
+  pool_timeout: 20
+
+execution:
+  backend: visual
+  # Set when switching to real visual execution, for example:
+  # mt5_terminal_path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+  mt5_terminal_path: "C:/Program Files/FundingPips 2 MT5 Terminal/terminal64.exe"
+  require_ui_confirmation: true

@@ -1,0 +1,18 @@
+analysis_profiles:
+  calculator_a:
+    ocr_engine: sidecar_or_tesseract
+    required_fields:
+      - symbol
+      - direction
+      - lot
+      - stop_loss
+      - take_profit
+    confidence_thresholds:
+      overall: 0.60
+      symbol: 0.70
+      direction: 0.70
+      entry_price: 0.50
+      stop_loss: 0.60
+      take_profit: 0.60
+      lot: 0.70
+      risk_percent: 0.30
