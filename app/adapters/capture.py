@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from pathlib import Path
+from typing import Any
 from typing import Callable
 
 from app.config import AppConfig
@@ -139,6 +140,73 @@ class TelegramCaptureAdapter(CaptureAdapter):
             "pool_timeout": self.config.telegram.pool_timeout,
         }
 
+    def _poll_reconnect_delay(self, attempt: int) -> float:
+        """Return the delay before the next Telegram polling reconnect attempt."""
+
+        base = max(1.0, self.config.telegram.reconnect_delay)
+        maximum = max(base, self.config.telegram.reconnect_max_delay)
+        return min(base * attempt, maximum)
+
+    async def _safe_shutdown_application(self, application: Any) -> None:
+        """Best-effort shutdown for a Telegram application instance."""
+
+        updater = getattr(application, "updater", None)
+        if updater is not None and getattr(updater, "running", False):
+            try:
+                await updater.stop()
+            except Exception:
+                pass
+        if getattr(application, "running", False):
+            try:
+                await application.stop()
+            except Exception:
+                pass
+        try:
+            await application.shutdown()
+        except Exception:
+            pass
+
+    async def _run_polling_forever(self, application_factory: Callable[[], Any]) -> None:
+        """Keep Telegram polling alive, retrying initialization when the network is unavailable."""
+
+        from telegram.error import NetworkError, TimedOut
+
+        attempt = 0
+        while True:
+            application = application_factory()
+            try:
+                await application.initialize()
+                await application.start()
+                await application.updater.start_polling()
+                attempt = 0
+                self.logger.info(
+                    "telegram polling active",
+                    extra={
+                        "status": "connected",
+                        "event_id": f"chat={self.config.telegram.allowed_chat_id};thread={self.config.telegram.allowed_thread_id}",
+                    },
+                )
+                while True:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                await self._safe_shutdown_application(application)
+                raise
+            except (TimedOut, NetworkError) as exc:
+                attempt += 1
+                delay = self._poll_reconnect_delay(attempt)
+                self.logger.warning(
+                    "telegram polling unavailable, retrying",
+                    extra={
+                        "status": f"attempt={attempt};retry_in={delay:.1f}s;reason={exc.__class__.__name__}",
+                        "event_id": f"chat={self.config.telegram.allowed_chat_id};thread={self.config.telegram.allowed_thread_id}",
+                    },
+                )
+                await self._safe_shutdown_application(application)
+                await asyncio.sleep(delay)
+            except Exception:
+                await self._safe_shutdown_application(application)
+                raise
+
     async def _fetch_file_with_retry(self, bot, file_id: str):
         """Fetch file metadata with retry for transient Telegram network errors."""
 
@@ -216,7 +284,7 @@ class TelegramCaptureAdapter(CaptureAdapter):
         """Build a domain event from a Telegram message."""
 
         sha = sha256_file(downloaded_path)
-        if not self.config.telegram.allow_duplicate_images and self.repository.is_duplicate(str(message.message_id), sha):
+        if not self.config.effective_allow_duplicate_images and self.repository.is_duplicate(str(message.message_id), sha):
             raise DuplicateEventError(f"duplicate telegram message: {message.message_id}")
         return CaptureEvent(
             source="telegram",
@@ -271,38 +339,32 @@ class TelegramCaptureAdapter(CaptureAdapter):
                 await message.reply_text(f"pipeline status: {status}")
 
         async def runner() -> None:
-            application = (
-                ApplicationBuilder()
-                .token(self.config.bot_token)
-                .job_queue(None)
-                .connect_timeout(self.config.telegram.connect_timeout)
-                .read_timeout(self.config.telegram.read_timeout)
-                .write_timeout(self.config.telegram.write_timeout)
-                .pool_timeout(self.config.telegram.pool_timeout)
-                .get_updates_connect_timeout(self.config.telegram.connect_timeout)
-                .get_updates_read_timeout(self.config.telegram.read_timeout)
-                .get_updates_write_timeout(self.config.telegram.write_timeout)
-                .get_updates_pool_timeout(self.config.telegram.pool_timeout)
-                .build()
-            )
-            application.add_handler(MessageHandler(filters.PHOTO, on_message))
-            application.add_error_handler(self._on_error)
+            def application_factory():
+                application = (
+                    ApplicationBuilder()
+                    .token(self.config.bot_token)
+                    .job_queue(None)
+                    .connect_timeout(self.config.telegram.connect_timeout)
+                    .read_timeout(self.config.telegram.read_timeout)
+                    .write_timeout(self.config.telegram.write_timeout)
+                    .pool_timeout(self.config.telegram.pool_timeout)
+                    .get_updates_connect_timeout(self.config.telegram.connect_timeout)
+                    .get_updates_read_timeout(self.config.telegram.read_timeout)
+                    .get_updates_write_timeout(self.config.telegram.write_timeout)
+                    .get_updates_pool_timeout(self.config.telegram.pool_timeout)
+                    .build()
+                )
+                application.add_handler(MessageHandler(filters.PHOTO, on_message))
+                application.add_error_handler(self._on_error)
+                return application
+
             self.logger.info(
-                "telegram polling started",
+                "telegram polling start requested",
                 extra={
-                    "status": "started",
+                    "status": "starting",
                     "event_id": f"chat={self.config.telegram.allowed_chat_id};thread={self.config.telegram.allowed_thread_id}",
                 },
             )
-            await application.initialize()
-            await application.start()
-            await application.updater.start_polling()
-            try:
-                while True:
-                    await asyncio.sleep(1)
-            finally:
-                await application.updater.stop()
-                await application.stop()
-                await application.shutdown()
+            await self._run_polling_forever(application_factory)
 
         asyncio.run(runner())

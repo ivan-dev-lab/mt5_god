@@ -2,11 +2,14 @@
 
 from pathlib import Path
 
+import pytest
+
 from app.adapters.capture import LocalFileCaptureAdapter
 from app.adapters.executor import DryRunMt5Executor
+from app.domain.exceptions import DuplicateEventError
 from app.adapters.image_analyzer import HeuristicImageAnalyzer
 from app.domain.models import CaptureMetadata
-from app.domain.models import PipelineStage
+from app.domain.models import PipelineStage, RuntimeMode
 from app.orchestrator.pipeline import PipelineOrchestrator
 from app.storage.files import FileStorage
 from app.storage.sqlite import SQLiteRepository
@@ -198,3 +201,45 @@ def test_pipeline_can_process_same_image_twice_when_duplicates_are_allowed(app_c
     assert second_summary.final_status == PipelineStage.EXECUTED
     assert first_event.event_id != second_event.event_id
     assert repository.get_task(first_event.event_id).image_sha256 == repository.get_task(second_event.event_id).image_sha256
+
+
+def test_pipeline_blocks_duplicate_image_in_full_pipeline_mode_by_default(app_config, tmp_path: Path) -> None:
+    source = tmp_path / "calculator_duplicate_blocked.png"
+    source.write_bytes(b"fake-image")
+    source.with_suffix(".png.ocr.txt").write_text(
+        "\n".join(
+            [
+                "Symbol: EURUSD",
+                "Direction: Buy",
+                "Lot: 0.10",
+                "SL: 1.0825",
+                "TP: 1.0890",
+                "Entry: 1.0840",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = app_config.model_copy(deep=True)
+    config.mode = RuntimeMode.FULL_PIPELINE
+
+    file_storage = FileStorage(config.paths)
+    repository = SQLiteRepository(config.paths.database_path)
+    analyzer = HeuristicImageAnalyzer(config=config, file_storage=file_storage)
+    executor = DryRunMt5Executor(config=config, file_storage=file_storage)
+    orchestrator = PipelineOrchestrator(
+        analyzer=analyzer,
+        executor=executor,
+        repository=repository,
+        file_storage=file_storage,
+        runtime_mode=config.mode,
+        allow_duplicate_images=config.effective_allow_duplicate_images,
+    )
+    capture = LocalFileCaptureAdapter(file_storage=file_storage, repository=repository)
+
+    first_event = capture.capture(source, allow_duplicate=True)
+    orchestrator.process_capture_event(first_event)
+
+    second_event = capture.capture(source, allow_duplicate=True)
+    with pytest.raises(DuplicateEventError):
+        orchestrator.process_capture_event(second_event)

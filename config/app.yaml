@@ -1,4 +1,15 @@
-mode: dry_run
+# Переключение режима работы:
+# 1) Логический тест без MT5:
+#    mode: dry_run
+#    execution.backend: dry_run
+# 2) Тест реального UI MT5 без реальной отправки ордера:
+#    mode: dry_run
+#    execution.backend: visual
+# 3) Рабочий режим:
+#    mode: full_pipeline
+#    execution.backend: visual
+# Важно: если в .env задан APP_MODE, он перекрывает `mode` из этого файла.
+mode: full_pipeline
 default_analysis_profile: calculator_a
 default_ui_profile: default_mt5
 
@@ -21,7 +32,10 @@ retry_policy:
 
 telegram:
   enabled: true
+  # Для супергруппы можно указывать id из ссылки t.me/c/<id> без -100:
+  # приложение само нормализует его в Bot API формат.
   allowed_chat_id: 2944501825
+  # ID топика/ветки внутри группы.
   allowed_thread_id: 548
   download_dir: data/inbox
   allowed_mime_types:
@@ -29,15 +43,22 @@ telegram:
     - image/png
     - image/webp
   send_status_updates: false
-  allow_duplicate_images: true
+  # null = авто-режим по `mode`:
+  # - dry_run / analyze_only -> дубликаты разрешены
+  # - full_pipeline / execute_only -> дубликаты блокируются
+  # true / false = ручной override, если нужно принудительно поменять поведение.
+  allow_duplicate_images: null
   connect_timeout: 20
   read_timeout: 60
   write_timeout: 60
   pool_timeout: 20
+  reconnect_delay: 5
+  reconnect_max_delay: 60
 
 execution:
+  # dry_run  -> исполнитель не трогает реальный MT5 UI
+  # visual   -> реальный визуальный исполнитель MT5
   backend: visual
-  # Set when switching to real visual execution, for example:
-  # mt5_terminal_path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+  # Укажи путь к terminal64.exe или terminal.exe своего MT5.
   mt5_terminal_path: "C:/Program Files/FundingPips 2 MT5 Terminal/terminal64.exe"
   require_ui_confirmation: true

@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from app.config import AppConfig, load_config
+from app.config import AppConfig, TelegramSettings, load_config
 from app.domain.exceptions import ConfigurationError
+from app.domain.models import RuntimeMode
 
 
 def test_env_overrides_telegram_chat_and_thread(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,3 +114,25 @@ def test_tesseract_cmd_auto_detects_common_windows_install(monkeypatch: pytest.M
     config = AppConfig()
 
     assert config.tesseract_cmd == str(target)
+
+
+def test_effective_duplicate_images_defaults_to_runtime_mode() -> None:
+    dry_run_config = AppConfig(mode=RuntimeMode.DRY_RUN)
+    full_pipeline_config = AppConfig(mode=RuntimeMode.FULL_PIPELINE)
+
+    assert dry_run_config.effective_allow_duplicate_images is True
+    assert full_pipeline_config.effective_allow_duplicate_images is False
+
+
+def test_effective_duplicate_images_can_be_overridden_explicitly() -> None:
+    dry_run_config = AppConfig(
+        mode=RuntimeMode.DRY_RUN,
+        telegram=TelegramSettings(allow_duplicate_images=False),
+    )
+    full_pipeline_config = AppConfig(
+        mode=RuntimeMode.FULL_PIPELINE,
+        telegram=TelegramSettings(allow_duplicate_images=True),
+    )
+
+    assert dry_run_config.effective_allow_duplicate_images is False
+    assert full_pipeline_config.effective_allow_duplicate_images is True

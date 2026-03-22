@@ -32,6 +32,8 @@ pip install -e .[ui]
 
 ```powershell
 python -m app run-bot
+python .\run_bot.py
+.\run_bot.bat
 python -m app analyze .\path\to\image.png
 python -m app run-once .\path\to\image.png
 python -m app execute .\examples\trade_intent.json

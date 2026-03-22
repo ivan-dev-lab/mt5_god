@@ -67,7 +67,11 @@ def main(argv: list[str] | None = None) -> int:
         print(result.model_dump_json(indent=2))
         return 0
 
-    capture_event = context.local_capture.capture(Path(args.image_path), source_name="local_file")
+    capture_event = context.local_capture.capture(
+        Path(args.image_path),
+        source_name="local_file",
+        allow_duplicate=context.config.effective_allow_duplicate_images,
+    )
     summary = context.orchestrator.process_capture_event(capture_event)
     print(summary.model_dump_json(indent=2))
     return 0

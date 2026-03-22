@@ -54,11 +54,13 @@ class TelegramSettings(ConfigModel):
     download_dir: Path = Path("data/inbox")
     allowed_mime_types: list[str] = Field(default_factory=lambda: ["image/jpeg", "image/png", "image/webp"])
     send_status_updates: bool = False
-    allow_duplicate_images: bool = False
+    allow_duplicate_images: bool | None = None
     connect_timeout: float = 20.0
     read_timeout: float = 60.0
     write_timeout: float = 60.0
     pool_timeout: float = 20.0
+    reconnect_delay: float = 5.0
+    reconnect_max_delay: float = 60.0
 
     @staticmethod
     def normalize_chat_id(value: int | None) -> int | None:
@@ -181,6 +183,20 @@ class AppConfig(ConfigModel):
         return os.getenv("TELEGRAM_BOT_TOKEN")
 
     @property
+    def is_test_mode(self) -> bool:
+        """Return `True` when runtime mode is intended for safe testing."""
+
+        return self.mode in {RuntimeMode.DRY_RUN, RuntimeMode.ANALYZE_ONLY}
+
+    @property
+    def effective_allow_duplicate_images(self) -> bool:
+        """Return the effective duplicate-image policy for the current runtime mode."""
+
+        if self.telegram.allow_duplicate_images is not None:
+            return self.telegram.allow_duplicate_images
+        return self.is_test_mode
+
+    @property
     def tesseract_cmd(self) -> str | None:
         """Return custom Tesseract binary path from environment."""
 
@@ -288,6 +304,8 @@ def _apply_env_overrides(merged: dict[str, Any]) -> dict[str, Any]:
         ("TELEGRAM_READ_TIMEOUT", "read_timeout"),
         ("TELEGRAM_WRITE_TIMEOUT", "write_timeout"),
         ("TELEGRAM_POOL_TIMEOUT", "pool_timeout"),
+        ("TELEGRAM_RECONNECT_DELAY", "reconnect_delay"),
+        ("TELEGRAM_RECONNECT_MAX_DELAY", "reconnect_max_delay"),
     ):
         env_value = _env_float(env_name)
         if env_value is not None:

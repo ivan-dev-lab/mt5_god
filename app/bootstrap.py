@@ -48,7 +48,7 @@ def build_context(config_dir: Path = Path("config"), env_file: Path | None = Pat
         repository=repository,
         file_storage=file_storage,
         runtime_mode=config.mode,
-        allow_duplicate_images=config.telegram.allow_duplicate_images,
+        allow_duplicate_images=config.effective_allow_duplicate_images,
     )
     local_capture = LocalFileCaptureAdapter(file_storage=file_storage, repository=repository)
     telegram_capture = (

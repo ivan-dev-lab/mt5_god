@@ -1,5 +1,6 @@
 """Tests for Telegram capture compatibility helpers."""
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -8,7 +9,7 @@ import apscheduler.schedulers.base as scheduler_base
 import pytest
 import pytz
 import tzlocal
-from telegram.error import TimedOut
+from telegram.error import NetworkError, TimedOut
 
 from app.adapters.capture import TelegramCaptureAdapter, patch_apscheduler_timezone_compatibility
 from app.domain.models import CaptureEvent
@@ -146,3 +147,71 @@ def test_to_capture_event_allows_duplicate_images_when_enabled(app_config, tmp_p
     )
 
     assert duplicate_event.image_sha256 == existing.image_sha256
+
+
+@pytest.mark.anyio
+async def test_run_polling_forever_retries_until_network_returns(app_config, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = app_config.model_copy(deep=True)
+    config.telegram.reconnect_delay = 2.0
+    config.telegram.reconnect_max_delay = 2.0
+
+    file_storage = FileStorage(config.paths)
+    repository = SQLiteRepository(config.paths.database_path)
+    adapter = TelegramCaptureAdapter(config, file_storage, repository)
+
+    class FakeUpdater:
+        def __init__(self) -> None:
+            self.running = False
+
+        async def start_polling(self) -> None:
+            self.running = True
+
+        async def stop(self) -> None:
+            self.running = False
+
+    class FakeApplication:
+        def __init__(self, *, fail_initialize: bool) -> None:
+            self.fail_initialize = fail_initialize
+            self.running = False
+            self.updater = FakeUpdater()
+            self.shutdown_calls = 0
+            self.stop_calls = 0
+
+        async def initialize(self) -> None:
+            if self.fail_initialize:
+                raise NetworkError("offline")
+
+        async def start(self) -> None:
+            self.running = True
+
+        async def stop(self) -> None:
+            self.running = False
+            self.stop_calls += 1
+
+        async def shutdown(self) -> None:
+            self.shutdown_calls += 1
+
+    applications: list[FakeApplication] = []
+
+    def application_factory() -> FakeApplication:
+        app = FakeApplication(fail_initialize=not applications)
+        applications.append(app)
+        return app
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+        if delay == 1:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr("app.adapters.capture.asyncio.sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await adapter._run_polling_forever(application_factory)
+
+    assert len(applications) == 2
+    assert applications[0].shutdown_calls == 1
+    assert applications[1].stop_calls == 1
+    assert applications[1].shutdown_calls == 1
+    assert sleep_calls == [2.0, 1]
